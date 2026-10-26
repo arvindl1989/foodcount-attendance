@@ -30,5 +30,8 @@ class Config:
     HEADCOUNT_ROLES = ("employee", "manager", "admin")
 
     SESSION_COOKIE_HTTPONLY = True
+    # Set to 1 when served over HTTPS (e.g. on Railway) so the session
+    # cookie is never sent over plain HTTP.
+    SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE") == "1"
     SESSION_COOKIE_SAMESITE = "Lax"
     PERMANENT_SESSION_LIFETIME = timedelta(hours=12)

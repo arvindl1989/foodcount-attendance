@@ -1,0 +1,8 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "deploy": {
+    "startCommand": "gunicorn --preload --workers 2 --access-logfile - wsgi:app",
+    "healthcheckPath": "/",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}

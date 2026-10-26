@@ -37,6 +37,38 @@ python seed.py --reset
 The calendar (FullCalendar) and chart (Chart.js) are loaded from the jsDelivr
 CDN, so the browser needs internet access.
 
+## Deploy to Railway
+
+The repo is ready for [Railway](https://railway.com): `railway.json` starts the
+app with gunicorn (`wsgi.py`), which listens on the `PORT` Railway provides.
+
+1. **Create the service.** In Railway: *New Project → Deploy from GitHub repo*,
+   pick this repository. Under the service's *Settings → Source*, choose the
+   branch to deploy.
+2. **Add a volume** to the service with mount path `/data`. Without it the
+   SQLite database is wiped on every deploy.
+3. **Set variables** (service → *Variables*):
+
+   | Variable | Value | Why |
+   |----------|-------|-----|
+   | `DATABASE` | `/data/foodcount.sqlite3` | keep the database on the volume |
+   | `APP_TIMEZONE` | your zone, e.g. `Asia/Kolkata` | Railway runs on UTC; this sets "today" and the 10:00 cutoff |
+   | `SESSION_COOKIE_SECURE` | `1` | Railway serves HTTPS |
+   | `SEED_DEMO_DATA` | `1` | optional: load demo users if the database is empty |
+   | `CUTOFF_HOUR` | e.g. `10` | optional |
+
+   `SECRET_KEY` is optional: if unset, one is generated and stored on the
+   volume next to the database.
+4. **Expose it:** *Settings → Networking → Generate Domain*.
+
+Run one replica only: a SQLite file on a volume can't be shared between
+replicas. Two gunicorn workers in that one replica is fine for this load.
+
+> **Heads-up:** with `SEED_DEMO_DATA=1`, anyone who has the URL can log in with
+> the demo passwords listed below, including as admin. That's fine for showing
+> the prototype around. Don't put real employee data in until there's a way to
+> manage users and passwords.
+
 ## Demo logins
 
 | Role     | Employee ID          | Password     |
@@ -100,14 +132,18 @@ environment variable of the same name.
 | `CUTOFF_HOUR`, `CUTOFF_MINUTE` | `10`, `0`        | Time after which today's status is locked |
 | `APP_TIMEZONE`   | server local time              | IANA zone for "today" and the cutoff, e.g. `Asia/Kolkata` |
 | `DATABASE`       | `instance/foodcount.sqlite3`   | SQLite file path |
-| `SECRET_KEY`     | random, saved in `instance/secret_key` | Session signing key |
+| `SECRET_KEY`     | random, saved as `secret_key` next to the database | Session signing key |
 | `HEADCOUNT_ROLES`| employee, manager, admin       | Which roles count towards the food count |
-| `HOST`, `PORT`, `FLASK_DEBUG` | `127.0.0.1`, `5000`, off | Dev server options (read by `run.py`) |
+| `SESSION_COOKIE_SECURE` | off                | Set to `1` when served over HTTPS |
+| `SEED_DEMO_DATA` | off                            | `1` = `wsgi.py` seeds an empty database on start |
+| `HOST`, `PORT`, `FLASK_DEBUG` | `127.0.0.1`, `5000`, off | Dev server options (read by `run.py`; gunicorn reads `PORT`) |
 
 ## Project layout
 
 ```
 run.py               start the dev server (creates + seeds the DB on first run)
+wsgi.py              production entry point for gunicorn (used on Railway)
+railway.json         Railway start command and health check
 seed.py              demo data; `python seed.py --reset` to regenerate
 start.sh             one-command setup + run
 app/
@@ -154,6 +190,5 @@ the food-count formula and the CSV export.
   `edit_block_reason` and `headcount`).
 - Managers and the admin count towards the headcount but don't have their own
   calendar yet, so they always count as in office.
-- `run.py` uses Flask's development server. For a real deployment, run the app
-  with a WSGI server such as gunicorn (`gunicorn "app:create_app()"`) and set
-  `SECRET_KEY`.
+- `run.py` uses Flask's development server; for hosting use gunicorn via
+  `wsgi.py` (see *Deploy to Railway*).

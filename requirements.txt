@@ -1,1 +1,4 @@
 Flask>=3.0,<4
+gunicorn>=22
+# IANA time zone data for APP_TIMEZONE on systems without /usr/share/zoneinfo.
+tzdata

@@ -15,8 +15,10 @@ def create_app(config_object=Config, **overrides):
     os.makedirs(app.instance_path, exist_ok=True)
     if not app.config.get("DATABASE"):
         app.config["DATABASE"] = os.path.join(app.instance_path, "foodcount.sqlite3")
+    data_dir = os.path.dirname(os.path.abspath(app.config["DATABASE"]))
+    os.makedirs(data_dir, exist_ok=True)
     if not app.config.get("SECRET_KEY"):
-        app.config["SECRET_KEY"] = _load_or_create_secret(app.instance_path)
+        app.config["SECRET_KEY"] = _load_or_create_secret(data_dir)
 
     from . import admin, auth, db, employee, manager
 
@@ -30,8 +32,8 @@ def create_app(config_object=Config, **overrides):
     return app
 
 
-def _load_or_create_secret(instance_path):
-    path = os.path.join(instance_path, "secret_key")
+def _load_or_create_secret(directory):
+    path = os.path.join(directory, "secret_key")
     if os.path.exists(path):
         with open(path) as fh:
             return fh.read().strip()
