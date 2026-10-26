@@ -118,7 +118,10 @@ def login(role):
             "SELECT * FROM users WHERE employee_id = ?", (employee_id,)
         ).fetchone()
 
-        if user is None or not check_password_hash(user["password_hash"], password):
+        if user is None and not get_db().execute("SELECT 1 FROM users LIMIT 1").fetchone():
+            error = ("No user accounts exist yet. To load the demo accounts, set "
+                     "SEED_DEMO_DATA=1 and restart (or run `python seed.py`).")
+        elif user is None or not check_password_hash(user["password_hash"], password):
             error = "Invalid employee ID or password."
         elif user["role"] != role:
             error = (f"This account doesn't have {info['label']} access. "

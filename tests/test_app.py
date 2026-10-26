@@ -170,3 +170,10 @@ def test_admin_csv_export(client):
     assert lines[0] == "date,employee_id,name,department,location,status"
     assert len(lines) == 35
     assert all(line.rsplit(",", 1)[1] in ("WFH", "LEAVE", "IN_OFFICE") for line in lines[1:])
+
+
+def test_login_explains_empty_database(tmp_path):
+    app = create_app(DATABASE=str(tmp_path / "empty.sqlite3"), SECRET_KEY="test", TESTING=True)
+    client = app.test_client()
+    html = login(client, "admin", "ADMIN01", "admin123").get_data(as_text=True)
+    assert "No user accounts exist yet" in html
