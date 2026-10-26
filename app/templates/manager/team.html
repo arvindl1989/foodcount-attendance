@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}My team{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>My team</h1>
+    <p class="muted">{{ team_size }} direct report{{ '' if team_size == 1 else 's' }}</p>
+  </div>
+</div>
+
+<section class="card today-panel">
+  <h2>Today · {{ today.strftime('%A %d %B') }}</h2>
+  {% if today.weekday() >= 5 %}
+    <p class="muted">It's the weekend.</p>
+  {% else %}
+  <div class="today-cols">
+    <div>
+      <h3><span class="dot dot-wfh"></span> Working from home ({{ away_today['WFH']|length }})</h3>
+      {% if away_today['WFH'] %}
+        <ul class="chip-list">{% for p in away_today['WFH'] %}<li class="chip chip-wfh">{{ p.name }}</li>{% endfor %}</ul>
+      {% else %}<p class="muted">Nobody</p>{% endif %}
+    </div>
+    <div>
+      <h3><span class="dot dot-leave"></span> On leave ({{ away_today['LEAVE']|length }})</h3>
+      {% if away_today['LEAVE'] %}
+        <ul class="chip-list">{% for p in away_today['LEAVE'] %}<li class="chip chip-leave">{{ p.name }}</li>{% endfor %}</ul>
+      {% else %}<p class="muted">Nobody</p>{% endif %}
+    </div>
+    <div>
+      <h3><span class="dot dot-office"></span> In office</h3>
+      <p class="big-number">{{ team_size - away_today['WFH']|length - away_today['LEAVE']|length }}</p>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="toolbar">
+    <div class="month-nav">
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('manager.team', month=prev_month, status=status_filter) }}" aria-label="Previous month">‹</a>
+      <h2 class="month-title">{{ month.strftime('%B %Y') }}</h2>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('manager.team', month=next_month, status=status_filter) }}" aria-label="Next month">›</a>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('manager.team', month=this_month, status=status_filter) }}">This month</a>
+    </div>
+    <form method="get" class="inline-form">
+      <input type="hidden" name="month" value="{{ month.strftime('%Y-%m') }}">
+      <label for="status">Show</label>
+      <select id="status" name="status" data-autosubmit>
+        {% for key, label in filters.items() %}
+        <option value="{{ key }}" {{ 'selected' if key == status_filter }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <noscript><button class="btn btn-sm">Apply</button></noscript>
+    </form>
+  </div>
+
+  {% if rows %}
+  <div class="grid-scroll">
+    <table class="team-grid">
+      <thead>
+        <tr>
+          <th class="sticky-col" scope="col">Team member</th>
+          {% for d in days %}
+          <th scope="col" class="{{ 'is-weekend' if d.weekday() >= 5 }} {{ 'is-today' if d == today }}">
+            <span class="dow">{{ d.strftime('%a')[0] }}</span>{{ d.day }}
+          </th>
+          {% endfor %}
+          <th scope="col" class="total-col">WFH</th>
+          <th scope="col" class="total-col">Leave</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <th scope="row" class="sticky-col">
+            <span class="person-name">{{ row.person.name }}</span>
+            <span class="person-meta">{{ row.person.employee_id }} · {{ row.person.location }}</span>
+          </th>
+          {% for c in row.cells %}
+          <td class="{{ 'is-weekend' if c.weekend }} {{ 'is-today' if c.today }} {{ 'cell-' ~ c.status|lower if c.status }}"
+              {% if c.status %}title="{{ 'Work from home' if c.status == 'WFH' else 'Leave' }}"{% endif %}>
+            {%- if c.status == 'WFH' %}WFH{% elif c.status == 'LEAVE' %}L{% endif -%}
+          </td>
+          {% endfor %}
+          <td class="total-col">{{ row.wfh }}</td>
+          <td class="total-col">{{ row.leave }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="legend">
+    <span><span class="dot dot-wfh"></span> WFH</span>
+    <span><span class="dot dot-leave"></span> L = Leave</span>
+    <span><span class="dot dot-office"></span> Blank = In office</span>
+    <span class="muted">Totals always cover the whole month.</span>
+  </p>
+  {% else %}
+  <p class="muted">You don't have any direct reports yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

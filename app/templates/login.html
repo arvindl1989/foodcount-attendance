@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ info.label }} login{% endblock %}
+{% block content %}
+<div class="login-wrap">
+  <div class="card login-card">
+    <a class="back-link" href="{{ url_for('auth.home') }}">← Back</a>
+    <h1>{{ info.label }} login</h1>
+    <p class="muted">{{ info.blurb }}</p>
+
+    {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+
+    <form method="post" class="form" autocomplete="on">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="employee_id">Employee ID</label>
+      <input id="employee_id" name="employee_id" value="{{ employee_id }}" required autofocus
+             autocapitalize="characters" autocomplete="username">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required autocomplete="current-password">
+      <button type="submit" class="btn btn-primary btn-block">Log in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

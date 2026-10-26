@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}My calendar{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>My calendar</h1>
+    <p class="muted">Click a weekday to mark it as Work from home or Leave. Days without an entry count as in office.</p>
+  </div>
+</div>
+
+<div class="layout-side">
+  <section class="card calendar-card">
+    <div id="calendar"
+         data-api="{{ url_for('employee.list_entries') }}"
+         data-today="{{ today }}"
+         data-cutoff-label="{{ cutoff_label }}"
+         data-cutoff-passed="{{ 'true' if cutoff_passed else 'false' }}"></div>
+  </section>
+
+  <aside class="side-stack">
+    <section class="card">
+      <h2 id="summary-title">This month</h2>
+      <div class="mini-stats">
+        <div class="mini-stat"><span class="dot dot-wfh"></span><span class="mini-label">WFH days</span><strong id="sum-wfh">–</strong></div>
+        <div class="mini-stat"><span class="dot dot-leave"></span><span class="mini-label">Leave days</span><strong id="sum-leave">–</strong></div>
+        <div class="mini-stat"><span class="dot dot-office"></span><span class="mini-label">Office days</span><strong id="sum-office">–</strong></div>
+      </div>
+    </section>
+    <section class="card">
+      <h2>How it works</h2>
+      <ul class="rules">
+        <li><span class="dot dot-wfh"></span> Blue = Work from home</li>
+        <li><span class="dot dot-leave"></span> Orange = Leave</li>
+        <li><span class="dot dot-office"></span> No colour = In office</li>
+        <li>Weekends and past dates can't be changed.</li>
+        <li>Today can be changed until <strong>{{ cutoff_label }}</strong>{% if cutoff_passed %} (closed for today){% endif %}.</li>
+      </ul>
+    </section>
+  </aside>
+</div>
+
+<dialog id="day-dialog" class="dialog">
+  <h2 id="dialog-title">Day</h2>
+  <p class="muted">Currently: <strong id="dialog-current">In office</strong></p>
+  <div class="choice-list">
+    <button type="button" class="choice choice-wfh" data-status="WFH">Work from home</button>
+    <button type="button" class="choice choice-leave" data-status="LEAVE">Leave</button>
+    <button type="button" class="choice choice-clear" data-status="CLEAR">Clear (in office)</button>
+  </div>
+  <p id="dialog-error" class="dialog-error" hidden></p>
+  <div class="dialog-actions">
+    <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/employee.js') }}"></script>
+{% endblock %}

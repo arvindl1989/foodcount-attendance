@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Welcome{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Work From Home &amp; Food Count</h1>
+  <p class="muted">Tell us where you're working so the office kitchen knows how many lunches to prepare.</p>
+</section>
+
+{% if g.user %}
+<div class="flash flash-info">
+  You're logged in as <strong>{{ g.user.name }}</strong> ({{ ROLES[g.user.role].label }}).
+  <a href="{{ url_for(ROLES[g.user.role].endpoint) }}">Go to your dashboard →</a>
+</div>
+{% endif %}
+
+<nav class="role-grid" aria-label="Choose your portal">
+  {% for key, role in ROLES.items() %}
+  <a class="role-card" href="{{ url_for('auth.login', role=key) }}">
+    <span class="role-icon role-icon-{{ key }}" aria-hidden="true">
+      {%- if key == 'employee' -%}
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+      {%- elif key == 'manager' -%}
+      <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.5"/><path d="M2 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/><path d="M15 13.5c3.3 0 6 2.5 6 6"/></svg>
+      {%- else -%}
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      {%- endif -%}
+    </span>
+    <span class="role-title">{{ role.label }}</span>
+    <span class="role-blurb">{{ role.blurb }}</span>
+  </a>
+  {% endfor %}
+</nav>
+{% endblock %}
