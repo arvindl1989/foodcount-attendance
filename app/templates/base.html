@@ -21,6 +21,7 @@
           <span class="user-name">{{ g.user.name }}</span>
           <span class="role-badge">{{ ROLES[g.user.role].label }}</span>
         </div>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('auth.change_password') }}">Change password</a>
         <form method="post" action="{{ url_for('auth.logout') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-ghost btn-sm">Log out</button>

@@ -15,6 +15,14 @@ class Config:
     # Path to the SQLite file. When unset: instance/foodcount.sqlite3
     DATABASE = os.environ.get("DATABASE")
 
+    # Everyone who can log in. Edit the file and restart to change users.
+    ROSTER_FILE = os.environ.get("ROSTER_FILE") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "roster.csv")
+
+    # Password given to people when they are first added from the roster.
+    # They can change it after logging in.
+    INITIAL_PASSWORD = os.environ.get("INITIAL_PASSWORD", "1234")
+
     # Employees can't change *today's* status at or after this time.
     CUTOFF_HOUR = int(os.environ.get("CUTOFF_HOUR", 10))
     CUTOFF_MINUTE = int(os.environ.get("CUTOFF_MINUTE", 0))

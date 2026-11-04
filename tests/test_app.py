@@ -7,10 +7,17 @@ import pytest
 
 from app import attendance, create_app
 from app.db import get_db
-from seed import seed
+from seed import add_sample_entries, read_roster, sync_roster
 
 # Fixed "now": Tuesday 2026-10-27, 09:00 (before the 10:00 cutoff).
 NOW = datetime(2026, 10, 27, 9, 0)
+
+# From data/roster.csv
+EMP = "40103405"     # BALAJI K, Internal Controls, reports to Anand Shanbag
+MGR = "64120538"     # Anand Shanbag
+ADMIN = "64061732"   # SATHISH KUMAR M
+TOTAL = 26           # 21 employees + 4 managers + 1 admin
+PW = "1234"
 
 
 @pytest.fixture(scope="session")
@@ -19,7 +26,9 @@ def seeded_db(tmp_path_factory):
     path = tmp_path_factory.mktemp("template") / "seeded.sqlite3"
     app = create_app(DATABASE=str(path), SECRET_KEY="test")
     with app.app_context():
-        seed(get_db(), rng=random.Random(1), reference_day=NOW.date())
+        db = get_db()
+        sync_roster(db, read_roster(app.config["ROSTER_FILE"]))
+        add_sample_entries(db, rng=random.Random(1), reference_day=NOW.date())
     return path
 
 
@@ -55,9 +64,9 @@ def test_home_has_three_portals(client):
 
 
 @pytest.mark.parametrize("role,user,pw,dest", [
-    ("employee", "EMP001", "emp123", "/employee/"),
-    ("manager", "MGR01", "manager123", "/manager/"),
-    ("admin", "ADMIN01", "admin123", "/admin/"),
+    ("employee", EMP, PW, "/employee/"),
+    ("manager", MGR, PW, "/manager/"),
+    ("admin", ADMIN, PW, "/admin/"),
 ])
 def test_login_redirects_to_dashboard(client, role, user, pw, dest):
     res = login(client, role, user, pw)
@@ -66,15 +75,15 @@ def test_login_redirects_to_dashboard(client, role, user, pw, dest):
 
 
 def test_bad_password_and_wrong_portal(client):
-    res = login(client, "employee", "EMP001", "nope")
+    res = login(client, "employee", EMP, "nope")
     assert res.status_code == 200 and "Invalid employee ID or password" in res.get_data(as_text=True)
-    res = login(client, "admin", "EMP001", "emp123")
+    res = login(client, "admin", EMP, PW)
     assert res.status_code == 200
     assert "doesn&#39;t have Admin access" in res.get_data(as_text=True)
 
 
 def test_login_requires_csrf(client):
-    res = client.post("/login/employee", data={"employee_id": "EMP001", "password": "emp123"})
+    res = client.post("/login/employee", data={"employee_id": EMP, "password": PW})
     assert res.status_code == 400
 
 
@@ -86,14 +95,14 @@ def test_pages_require_login(client):
 
 
 def test_cross_role_access_blocked(client):
-    login(client, "employee", "EMP001", "emp123")
+    login(client, "employee", EMP, PW)
     for url in ("/manager/", "/admin/"):
         res = client.get(url)
         assert res.status_code == 302 and res.headers["Location"] == "/"
 
 
 def test_logout(client):
-    login(client, "employee", "EMP001", "emp123")
+    login(client, "employee", EMP, PW)
     token = csrf(client, "/employee/")
     client.post("/logout", data={"csrf_token": token})
     assert client.get("/employee/").status_code == 302
@@ -106,7 +115,7 @@ def post_entry(client, day, status):
 
 
 def test_employee_set_and_clear(client):
-    login(client, "employee", "EMP001", "emp123")
+    login(client, "employee", EMP, PW)
     assert post_entry(client, "2026-10-28", "WFH").status_code == 200
     assert post_entry(client, "2026-10-28", "LEAVE").status_code == 200  # update in place
     entries = client.get("/employee/api/entries?start=2026-10-28&end=2026-10-29").get_json()
@@ -116,7 +125,7 @@ def test_employee_set_and_clear(client):
 
 
 def test_employee_edit_rules(client, monkeypatch):
-    login(client, "employee", "EMP001", "emp123")
+    login(client, "employee", EMP, PW)
     assert post_entry(client, "2026-10-26", "WFH").status_code == 422      # past
     assert post_entry(client, "2026-10-31", "WFH").status_code == 422      # Saturday
     assert post_entry(client, "2026-10-27", "WFH").status_code == 200      # today, before cutoff
@@ -127,22 +136,24 @@ def test_employee_edit_rules(client, monkeypatch):
 
 
 def test_api_without_csrf_rejected(client):
-    login(client, "employee", "EMP001", "emp123")
+    login(client, "employee", EMP, PW)
     res = client.post("/employee/api/entries", json={"date": "2026-10-28", "status": "WFH"})
     assert res.status_code == 400
 
 
 def test_manager_sees_only_direct_reports(client):
-    login(client, "manager", "MGR01", "manager123")
+    login(client, "manager", MGR, PW)
     html = client.get("/manager/?month=2026-10").get_data(as_text=True)
-    assert "EMP001" in html and "EMP004" in html  # team 0: EMP001, 004, 007...
-    assert "EMP002" not in html and "EMP003" not in html
+    for member in ("40103405", "40105266", "64127077", "40104868"):  # Internal Controls
+        assert member in html
+    assert "64166189" not in html and "64131777" not in html  # other teams
+    assert "4 direct reports" in html
     assert "October 2026" in html
     assert "November 2026" in client.get("/manager/?month=2026-11").get_data(as_text=True)
 
 
 def test_manager_status_filter(client, app):
-    login(client, "manager", "MGR01", "manager123")
+    login(client, "manager", MGR, PW)
     only_leave = client.get("/manager/?month=2026-10&status=LEAVE").get_data(as_text=True)
     assert "cell-wfh" not in only_leave
     only_wfh = client.get("/manager/?month=2026-10&status=WFH").get_data(as_text=True)
@@ -150,30 +161,78 @@ def test_manager_status_filter(client, app):
 
 
 def test_admin_headcount_matches_formula(client, app):
-    login(client, "admin", "ADMIN01", "admin123")
+    login(client, "admin", ADMIN, PW)
     with app.app_context():
         hc = attendance.headcount(date(2026, 10, 27))
-        assert hc["total"] == 34
+        assert hc["total"] == TOTAL
         assert hc["in_office"] == hc["total"] - hc["wfh"] - hc["leave"]
         assert sum(c["in_office"] for _, c in hc["by_location"]) == hc["in_office"]
         assert attendance.headcount(date(2026, 10, 31))["in_office"] == 0  # weekend
     html = client.get("/admin/?date=2026-10-27").get_data(as_text=True)
     assert f'<span class="stat-value">{hc["in_office"]}</span>' in html
-    assert "Head Office" in html and "Engineering" in html
+    assert "Internal Controls" in html and "Marketing Hub" in html and "STP" in html
 
 
 def test_admin_csv_export(client):
-    login(client, "admin", "ADMIN01", "admin123")
+    login(client, "admin", ADMIN, PW)
     res = client.get("/admin/export.csv?date=2026-10-27")
     assert res.mimetype == "text/csv"
     lines = res.get_data(as_text=True).strip().splitlines()
     assert lines[0] == "date,employee_id,name,department,location,status"
-    assert len(lines) == 35
+    assert len(lines) == TOTAL + 1
     assert all(line.rsplit(",", 1)[1] in ("WFH", "LEAVE", "IN_OFFICE") for line in lines[1:])
 
 
 def test_login_explains_empty_database(tmp_path):
     app = create_app(DATABASE=str(tmp_path / "empty.sqlite3"), SECRET_KEY="test", TESTING=True)
     client = app.test_client()
-    html = login(client, "admin", "ADMIN01", "admin123").get_data(as_text=True)
+    html = login(client, "admin", ADMIN, PW).get_data(as_text=True)
     assert "No user accounts exist yet" in html
+
+
+def write_roster(path, text):
+    path.write_text("employee_id,name,role,manager,department,location\n" + text)
+    return path
+
+
+def test_roster_sync_updates_and_removes(app, tmp_path):
+    with app.app_context():
+        db = get_db()
+        # Simulate the employee having changed their password.
+        db.execute("UPDATE users SET password_hash = 'kept' WHERE employee_id = ?", (EMP,))
+        roster = write_roster(tmp_path / "r.csv",
+            f"{MGR},Anand Shanbag,manager,,Internal Controls,Chennai\n"
+            f"{EMP},Balaji K,employee,anand  SHANBAG,Internal Controls,Chennai\n"
+            "99999999,NEW PERSON,employee,Anand Shanbag,Internal Controls,\n")
+        assert sync_roster(db, read_roster(roster)) == (1, 2, TOTAL - 2)
+        rows = {r["employee_id"]: r for r in db.execute("SELECT * FROM users")}
+        assert set(rows) == {MGR, EMP, "99999999"}
+        assert rows[EMP]["name"] == "Balaji K" and rows[EMP]["location"] == "Chennai"
+        assert rows[EMP]["password_hash"] == "kept"
+        assert rows["99999999"]["manager_id"] == rows[MGR]["id"]
+        assert db.execute("SELECT COUNT(*) FROM attendance_entries a JOIN users u ON u.id = a.user_id "
+                          "WHERE u.employee_id NOT IN (?, ?, '99999999')", (MGR, EMP)).fetchone()[0] == 0
+
+
+def test_roster_rejects_unknown_manager(tmp_path):
+    roster = write_roster(tmp_path / "r.csv", "1,A,employee,NOBODY,X,\n")
+    with pytest.raises(ValueError, match="NOBODY"):
+        read_roster(roster)
+
+
+def test_change_password(client):
+    login(client, "employee", EMP, PW)
+    token = csrf(client, "/account/password")
+    form = {"current_password": PW, "new_password": "short", "confirm_password": "short", "csrf_token": token}
+    assert "at least 8" in client.post("/account/password", data=form).get_data(as_text=True)
+    form.update(new_password="better-pass-1", confirm_password="better-pass-1")
+    assert client.post("/account/password", data=form).status_code == 302
+    client.post("/logout", data={"csrf_token": csrf(client, "/employee/")})
+    assert login(client, "employee", EMP, PW).status_code == 200        # old password fails
+    assert login(client, "employee", EMP, "better-pass-1").status_code == 302
+
+
+def test_ritu_manages_the_admin(client):
+    login(client, "manager", "11223344", PW)
+    html = client.get("/manager/").get_data(as_text=True)
+    assert "SATHISH KUMAR M" in html and "1 direct report" in html

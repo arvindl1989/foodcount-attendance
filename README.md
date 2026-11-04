@@ -17,7 +17,9 @@ vanilla JS. No build step.
 
 That creates a virtualenv in `.venv`, installs the requirements and starts the
 server on <http://127.0.0.1:5000>. On first run the SQLite database
-(`instance/foodcount.sqlite3`) is created and filled with demo data.
+(`instance/foodcount.sqlite3`) is created, the users are loaded from
+`data/roster.csv`, and random sample WFH / leave entries are added so the
+dashboards have something to show.
 
 Manual steps (also works on Windows):
 
@@ -28,10 +30,10 @@ pip install -r requirements.txt
 python run.py
 ```
 
-To throw away all data and generate fresh demo data:
+To throw away all data and start again with fresh sample entries:
 
 ```sh
-python seed.py --reset
+python seed.py --reset --sample-entries
 ```
 
 The calendar (FullCalendar) and chart (Chart.js) are loaded from the jsDelivr
@@ -54,7 +56,8 @@ app with gunicorn (`wsgi.py`), which listens on the `PORT` Railway provides.
    | `DATABASE` | `/data/foodcount.sqlite3` | keep the database on the volume |
    | `APP_TIMEZONE` | your zone, e.g. `Asia/Kolkata` | Railway runs on UTC; this sets "today" and the 10:00 cutoff |
    | `SESSION_COOKIE_SECURE` | `1` | Railway serves HTTPS |
-   | `SEED_DEMO_DATA` | `1` | optional: load demo users if the database is empty |
+   | `SEED_DEMO_DATA` | `1` | optional: add random sample WFH / leave entries if there are none. Leave it off for real use. |
+   | `INITIAL_PASSWORD` | e.g. `1234` | optional: password for newly added people (default `1234`) |
    | `CUTOFF_HOUR` | e.g. `10` | optional |
 
    `SECRET_KEY` is optional: if unset, one is generated and stored on the
@@ -64,22 +67,47 @@ app with gunicorn (`wsgi.py`), which listens on the `PORT` Railway provides.
 Run one replica only: a SQLite file on a volume can't be shared between
 replicas. Two gunicorn workers in that one replica is fine for this load.
 
-> **Heads-up:** with `SEED_DEMO_DATA=1`, anyone who has the URL can log in with
-> the demo passwords listed below, including as admin. That's fine for showing
-> the prototype around. Don't put real employee data in until there's a way to
-> manage users and passwords.
+Users are synced from `data/roster.csv` on every start, so to change people
+just edit that file, push, and Railway redeploys.
 
-## Demo logins
+> **Heads-up:** everyone starts with the same password (`1234`), so anyone who
+> knows an employee ID and has the URL can log in as that person, including
+> the admin. Ask people to use **Change password** (in the header) after their
+> first login, or set a less guessable `INITIAL_PASSWORD` before the first
+> deploy.
 
-| Role     | Employee ID          | Password     |
-|----------|----------------------|--------------|
-| Admin    | `ADMIN01`            | `admin123`   |
-| Manager  | `MGR01`, `MGR02`, `MGR03` | `manager123` |
-| Employee | `EMP001` – `EMP030`  | `emp123`     |
+## Users and logins
 
-Seed data: 1 admin, 3 managers, 30 employees (10 per manager) across
-2 locations (Head Office, City Centre) and 3 departments (Engineering, Finance,
-Operations), with random WFH and leave entries for the current and next month.
+**Username = employee ID. Initial password = `1234` for everyone.**
+
+| Role | ID | Name | Team |
+|------|----|------|------|
+| Admin | `64061732` | SATHISH KUMAR M | reports to Ritu |
+| Manager | `64120538` | Anand Shanbag | Internal Controls (4) |
+| Manager | `64149786` | Suresh K | Marketing Hub (5) |
+| Manager | `40104978` | Rajesh P | STP (12) |
+| Manager | `11223344` | Ritu | manages Sathish Kumar M |
+| Employee | the 21 IDs in `data/roster.csv` | | |
+
+### Changing users: `data/roster.csv`
+
+```
+employee_id,name,role,manager,department,location
+64120538,Anand Shanbag,manager,,Internal Controls,
+40103405,BALAJI K,employee,Anand Shanbag,Internal Controls,
+```
+
+- `role` is `employee`, `manager` or `admin`.
+- `manager` is the manager's **name** exactly as written on their own row
+  (case and extra spaces don't matter).
+- `department` and `location` drive the admin breakdowns; `location` is empty
+  for now.
+
+On every start (or `python seed.py`), the app makes the users match the file:
+new rows are added with `INITIAL_PASSWORD`, changed rows are updated (passwords
+people have changed are kept), and people removed from the file are deleted
+along with their WFH / leave entries. A mistake in the file (unknown manager,
+duplicate ID) stops the app from starting and the log says which line.
 
 ## The portals
 
@@ -135,7 +163,9 @@ environment variable of the same name.
 | `SECRET_KEY`     | random, saved as `secret_key` next to the database | Session signing key |
 | `HEADCOUNT_ROLES`| employee, manager, admin       | Which roles count towards the food count |
 | `SESSION_COOKIE_SECURE` | off                | Set to `1` when served over HTTPS |
-| `SEED_DEMO_DATA` | off                            | `1` = `wsgi.py` seeds an empty database on start |
+| `ROSTER_FILE`    | `data/roster.csv`              | Who can log in (synced on every start) |
+| `INITIAL_PASSWORD` | `1234`                       | Password for people newly added from the roster |
+| `SEED_DEMO_DATA` | off                            | `1` = `wsgi.py` adds random sample entries when there are none |
 | `HOST`, `PORT`, `FLASK_DEBUG` | `127.0.0.1`, `5000`, off | Dev server options (read by `run.py`; gunicorn reads `PORT`) |
 
 ## Project layout
@@ -144,7 +174,8 @@ environment variable of the same name.
 run.py               start the dev server (creates + seeds the DB on first run)
 wsgi.py              production entry point for gunicorn (used on Railway)
 railway.json         Railway start command and health check
-seed.py              demo data; `python seed.py --reset` to regenerate
+seed.py              roster sync + optional sample entries
+data/roster.csv      the people who can log in
 start.sh             one-command setup + run
 app/
   __init__.py        application factory

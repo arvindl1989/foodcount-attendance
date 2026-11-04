@@ -1,72 +1,119 @@
-"""Populate the database with demo users and random WFH / leave entries.
+"""Load users from the roster file, and optionally sample WFH / leave entries.
+
+The roster (data/roster.csv, or ROSTER_FILE) is the list of everyone who can
+log in. Syncing it:
+  - adds people who are new, with the initial password (INITIAL_PASSWORD)
+  - updates name, role, manager, department and location of existing people
+    (passwords they have changed are kept)
+  - removes people who are no longer in the file, with their entries
 
 Usage:
-    python seed.py            # seed only if there are no users yet
-    python seed.py --reset    # delete ALL users and entries, then seed again
+    python seed.py                    # sync users from the roster
+    python seed.py --sample-entries   # ...and add random entries if there are none
+    python seed.py --reset --sample-entries   # wipe everything, start over
 
-`python run.py` calls seed_if_empty() automatically, so you only need this
-script to reset the demo data.
+`python run.py` syncs the roster and adds sample entries to an empty
+database automatically. On a server, wsgi.py syncs the roster on every start.
 """
 import argparse
+import csv
+import os
 import random
 from datetime import timedelta
 
+from flask import current_app
 from werkzeug.security import generate_password_hash
 
 from app import create_app
 from app.attendance import add_months, is_weekend, month_days, today
 from app.db import get_db
 
-DEPARTMENTS = ["Engineering", "Finance", "Operations"]
-LOCATIONS = ["Head Office", "City Centre"]
-
-ADMIN = ("ADMIN01", "Alex Morgan", "admin123")
-MANAGERS = [  # employee_id, name, department
-    ("MGR01", "Priya Raman", "Engineering"),
-    ("MGR02", "David Okafor", "Finance"),
-    ("MGR03", "Sofia Martinez", "Operations"),
-]
-MANAGER_PASSWORD = "manager123"
-EMPLOYEE_PASSWORD = "emp123"
-EMPLOYEE_NAMES = [
-    "Aarav Shah", "Bella Thompson", "Carlos Silva", "Diana Chen", "Ethan Brooks",
-    "Fatima Khan", "George Miller", "Hana Suzuki", "Ivan Petrov", "Julia Rossi",
-    "Kofi Mensah", "Lena Fischer", "Mohammed Ali", "Nina Kowalski", "Oscar Lindqvist",
-    "Pooja Nair", "Quentin Dubois", "Rachel Green", "Samuel Adeyemi", "Tara O'Neill",
-    "Umar Farooq", "Valentina Cruz", "William Park", "Xin Li", "Yusuf Demir",
-    "Zara Ahmed", "Arjun Mehta", "Chloe Martin", "Daniel Kim", "Emma Wilson",
-]
+ROLES = ("employee", "manager", "admin")
 
 
-def seed(db, rng=None, reference_day=None):
-    """Insert demo users and entries for this month and next. Returns user count."""
+class RosterError(ValueError):
+    pass
+
+
+def _clean(value):
+    return " ".join((value or "").split())
+
+
+def read_roster(path):
+    """Parse and validate the roster CSV. Returns a list of dicts."""
+    with open(path, newline="", encoding="utf-8-sig") as fh:
+        rows = list(csv.DictReader(fh))
+
+    people, seen = [], set()
+    for line, raw in enumerate(rows, start=2):
+        p = {k: _clean(raw.get(k)) for k in ("employee_id", "name", "role", "manager", "department", "location")}
+        p["employee_id"] = p["employee_id"].upper()
+        p["role"] = p["role"].lower()
+        if not p["employee_id"] and not p["name"]:
+            continue  # blank line
+        if not p["employee_id"] or not p["name"]:
+            raise RosterError(f"{path} line {line}: employee_id and name are required")
+        if p["role"] not in ROLES:
+            raise RosterError(f"{path} line {line}: role must be one of {', '.join(ROLES)}")
+        if p["employee_id"] in seen:
+            raise RosterError(f"{path} line {line}: duplicate employee_id {p['employee_id']}")
+        seen.add(p["employee_id"])
+        people.append(p)
+
+    # The manager column holds the manager's name, as in the team lists.
+    by_name = {}
+    for p in people:
+        by_name.setdefault(p["name"].casefold(), []).append(p)
+    for p in people:
+        if not p["manager"]:
+            continue
+        matches = by_name.get(p["manager"].casefold(), [])
+        if len(matches) != 1:
+            problem = "no one in the roster" if not matches else "more than one person in the roster"
+            raise RosterError(f"{p['name']}'s manager '{p['manager']}' matches {problem}")
+        p["manager_employee_id"] = matches[0]["employee_id"]
+    return people
+
+
+def sync_roster(db, people):
+    """Make the users table match `people`. Returns (added, updated, removed)."""
+    existing = {r["employee_id"]: r for r in db.execute("SELECT id, employee_id FROM users")}
+    added = updated = 0
+    for p in people:
+        values = (p["name"], p["role"], p["department"] or None, p["location"] or None)
+        if p["employee_id"] in existing:
+            db.execute("UPDATE users SET name = ?, role = ?, department = ?, location = ? WHERE employee_id = ?",
+                       (*values, p["employee_id"]))
+            updated += 1
+        else:
+            db.execute(
+                """INSERT INTO users (employee_id, name, role, department, location, password_hash)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (p["employee_id"], *values, generate_password_hash(current_app.config["INITIAL_PASSWORD"])),
+            )
+            added += 1
+
+    ids = {r["employee_id"]: r["id"] for r in db.execute("SELECT id, employee_id FROM users")}
+    for p in people:
+        manager = p.get("manager_employee_id")
+        db.execute("UPDATE users SET manager_id = ? WHERE employee_id = ?",
+                   (ids[manager] if manager else None, p["employee_id"]))
+
+    keep = {p["employee_id"] for p in people}
+    gone = [eid for eid in ids if eid not in keep]
+    for eid in gone:
+        db.execute("DELETE FROM users WHERE employee_id = ?", (eid,))  # entries cascade
+    db.commit()
+    return added, updated, len(gone)
+
+
+def add_sample_entries(db, rng=None, reference_day=None):
+    """Random WFH / leave for this month and next, for every employee."""
     rng = rng or random.Random()
     reference_day = reference_day or today()
-
-    def add_user(employee_id, name, password, role, manager_id=None, department=None, location=None):
-        cur = db.execute(
-            """INSERT INTO users (employee_id, name, password_hash, role, manager_id, department, location)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (employee_id, name, generate_password_hash(password), role, manager_id, department, location),
-        )
-        return cur.lastrowid
-
-    add_user(ADMIN[0], ADMIN[1], ADMIN[2], "admin", department="Operations", location=LOCATIONS[0])
-
-    manager_ids = []
-    for i, (emp_id, name, dept) in enumerate(MANAGERS):
-        manager_ids.append(add_user(emp_id, name, MANAGER_PASSWORD, "manager",
-                                    department=dept, location=LOCATIONS[i % 2]))
-
-    employee_ids = []
-    for i, name in enumerate(EMPLOYEE_NAMES):
-        team = i % len(MANAGERS)
-        employee_ids.append(add_user(
-            f"EMP{i + 1:03d}", name, EMPLOYEE_PASSWORD, "employee",
-            manager_id=manager_ids[team],
-            department=MANAGERS[team][2],
-            location=LOCATIONS[(i // len(MANAGERS)) % 2],
-        ))
+    employee_ids = [r["id"] for r in db.execute("SELECT id FROM users WHERE role = 'employee' ORDER BY id")]
+    if not employee_ids:
+        return 0
 
     first = reference_day.replace(day=1)
     workdays = [d for d in month_days(first) + month_days(add_months(first, 1)) if not is_weekend(d)]
@@ -91,7 +138,7 @@ def seed(db, rng=None, reference_day=None):
     if not is_weekend(reference_day):
         day = reference_day.isoformat()
         on_leave = {r[0] for r in rows if r[1] == day and r[2] == "LEAVE"}
-        for user_id in rng.sample(employee_ids, 3):
+        for user_id in rng.sample(employee_ids, min(3, len(employee_ids))):
             if len(on_leave) >= 2:
                 break
             rows = [r for r in rows if not (r[0] == user_id and r[1] == day)]
@@ -100,7 +147,7 @@ def seed(db, rng=None, reference_day=None):
 
     db.executemany("INSERT INTO attendance_entries (user_id, date, status) VALUES (?, ?, ?)", rows)
     db.commit()
-    return 1 + len(manager_ids) + len(employee_ids)
+    return len(rows)
 
 
 def reset(db):
@@ -109,31 +156,28 @@ def reset(db):
     db.commit()
 
 
-def seed_if_empty(app):
+def setup_data(app, sample_entries=False, log=print):
+    """Sync the roster; add sample entries if asked and there are none yet."""
     with app.app_context():
         db = get_db()
-        if db.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
-            return False
-        seed(db)
-        return True
+        added, updated, removed = sync_roster(db, read_roster(app.config["ROSTER_FILE"]))
+        log(f"Roster: {added} added, {updated} updated, {removed} removed.")
+        if sample_entries and not db.execute("SELECT 1 FROM attendance_entries LIMIT 1").fetchone():
+            log(f"Sample data: {add_sample_entries(db)} WFH / leave entries added.")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--reset", action="store_true", help="delete all existing data first")
+    parser.add_argument("--reset", action="store_true", help="delete all users and entries first")
+    parser.add_argument("--sample-entries", action="store_true",
+                        help="add random WFH / leave entries if there are none")
     args = parser.parse_args()
 
     app = create_app()
-    with app.app_context():
-        db = get_db()
-        if args.reset:
-            reset(db)
-        elif db.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
-            print("Database already has users; nothing to do. Use --reset to start over.")
-            return
-        count = seed(db)
-        entries = db.execute("SELECT COUNT(*) FROM attendance_entries").fetchone()[0]
-        print(f"Seeded {count} users and {entries} attendance entries into {app.config['DATABASE']}")
+    if args.reset:
+        with app.app_context():
+            reset(get_db())
+    setup_data(app, sample_entries=args.sample_entries)
 
 
 if __name__ == "__main__":

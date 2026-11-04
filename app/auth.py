@@ -6,7 +6,7 @@ from flask import (
     Blueprint, abort, flash, g, jsonify, redirect, render_template, request,
     session, url_for,
 )
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from .db import get_db
 
@@ -119,8 +119,8 @@ def login(role):
         ).fetchone()
 
         if user is None and not get_db().execute("SELECT 1 FROM users LIMIT 1").fetchone():
-            error = ("No user accounts exist yet. To load the demo accounts, set "
-                     "SEED_DEMO_DATA=1 and restart (or run `python seed.py`).")
+            error = ("No user accounts exist yet. Add people to data/roster.csv "
+                     "and restart (or run `python seed.py`).")
         elif user is None or not check_password_hash(user["password_hash"], password):
             error = "Invalid employee ID or password."
         elif user["role"] != role:
@@ -134,6 +134,38 @@ def login(role):
 
     return render_template("login.html", role=role, info=info, error=error,
                            employee_id=employee_id)
+
+
+MIN_PASSWORD_LENGTH = 8
+
+
+@bp.route("/account/password", methods=["GET", "POST"])
+def change_password():
+    if g.user is None:
+        flash("Please log in to continue.", "info")
+        return redirect(url_for("auth.home"))
+
+    error = None
+    if request.method == "POST":
+        current = request.form.get("current_password", "")
+        new = request.form.get("new_password", "")
+        if not check_password_hash(g.user["password_hash"], current):
+            error = "Your current password is incorrect."
+        elif len(new) < MIN_PASSWORD_LENGTH:
+            error = f"The new password must be at least {MIN_PASSWORD_LENGTH} characters."
+        elif new != request.form.get("confirm_password", ""):
+            error = "The new passwords don't match."
+        elif new == current:
+            error = "The new password must be different from the current one."
+        else:
+            db = get_db()
+            db.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                       (generate_password_hash(new), g.user["id"]))
+            db.commit()
+            flash("Your password has been changed.", "info")
+            return redirect(url_for(ROLES[g.user["role"]]["endpoint"]))
+
+    return render_template("change_password.html", error=error, min_length=MIN_PASSWORD_LENGTH)
 
 
 @bp.post("/logout")

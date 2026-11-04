@@ -74,7 +74,7 @@
         <tr>
           <th scope="row" class="sticky-col">
             <span class="person-name">{{ row.person.name }}</span>
-            <span class="person-meta">{{ row.person.employee_id }} · {{ row.person.location }}</span>
+            <span class="person-meta">{{ row.person.employee_id }}{% if row.person.location %} · {{ row.person.location }}{% endif %}</span>
           </th>
           {% for c in row.cells %}
           <td class="{{ 'is-weekend' if c.weekend }} {{ 'is-today' if c.today }} {{ 'cell-' ~ c.status|lower if c.status }}"

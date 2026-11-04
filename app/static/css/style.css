@@ -48,7 +48,7 @@ a { color: var(--accent); }
   display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px;
   background: var(--accent); color: #fff; font-size: .8rem; letter-spacing: .5px;
 }
-.userbox { display: flex; align-items: center; gap: 12px; }
+.userbox { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; justify-content: flex-end; }
 .user-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .user-name { font-weight: 600; }
 .role-badge {
