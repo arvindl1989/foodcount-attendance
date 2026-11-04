@@ -49,6 +49,7 @@ def read_roster(path):
         p = {k: _clean(raw.get(k)) for k in ("employee_id", "name", "role", "manager", "department", "location")}
         p["employee_id"] = p["employee_id"].upper()
         p["role"] = p["role"].lower()
+        p["bus_pass"] = _clean(raw.get("bus_pass")).lower() in ("yes", "y", "1", "true")
         if not p["employee_id"] and not p["name"]:
             continue  # blank line
         if not p["employee_id"] or not p["name"]:
@@ -80,15 +81,15 @@ def sync_roster(db, people):
     existing = {r["employee_id"]: r for r in db.execute("SELECT id, employee_id FROM users")}
     added = updated = 0
     for p in people:
-        values = (p["name"], p["role"], p["department"] or None, p["location"] or None)
+        values = (p["name"], p["role"], p["department"] or None, p["location"] or None, int(p["bus_pass"]))
         if p["employee_id"] in existing:
-            db.execute("UPDATE users SET name = ?, role = ?, department = ?, location = ? WHERE employee_id = ?",
-                       (*values, p["employee_id"]))
+            db.execute("""UPDATE users SET name = ?, role = ?, department = ?, location = ?, bus_pass = ?
+                          WHERE employee_id = ?""", (*values, p["employee_id"]))
             updated += 1
         else:
             db.execute(
-                """INSERT INTO users (employee_id, name, role, department, location, password_hash)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO users (employee_id, name, role, department, location, bus_pass, password_hash)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (p["employee_id"], *values, generate_password_hash(current_app.config["INITIAL_PASSWORD"])),
             )
             added += 1

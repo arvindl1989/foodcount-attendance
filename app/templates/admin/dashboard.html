@@ -24,7 +24,7 @@
 </div>
 
 {% if summary.closed %}
-<div class="flash flash-info">This date is a weekend — the office is closed, so no food is needed.</div>
+<div class="flash flash-info">This date is a weekend — the office is closed, so no food or bus is needed.</div>
 {% endif %}
 
 <section class="stat-grid">
@@ -32,45 +32,47 @@
   <div class="stat stat-wfh"><span class="stat-label">Working from home</span><span class="stat-value">{{ summary.wfh }}</span></div>
   <div class="stat stat-leave"><span class="stat-label">On leave</span><span class="stat-value">{{ summary.leave }}</span></div>
   <div class="stat stat-accent">
-    <span class="stat-label">Expected in office · food count</span>
+    <span class="stat-label">Food count (FC) · expected in office</span>
     <span class="stat-value">{{ summary.in_office }}</span>
     <span class="stat-note">{% if summary.closed %}Office closed{% else %}= {{ summary.total }} − {{ summary.wfh }} − {{ summary.leave }}{% endif %}</span>
   </div>
+  <div class="stat stat-bus">
+    <span class="stat-label">Bus count (BC) · pass holders in office</span>
+    <span class="stat-value">{{ summary.bus }}</span>
+    <span class="stat-note">{% if summary.closed %}Office closed{% else %}of {{ summary.bus_pass }} bus pass holders{% endif %}</span>
+  </div>
 </section>
 
-<div class="two-col">
-  {% for title, groups in [('By location', summary.by_location), ('By department', summary.by_department)] %}
-  <section class="card">
-    <h2>{{ title }}</h2>
-    <div class="grid-scroll">
-    <table class="data-table">
-      <thead><tr><th scope="col">{{ title[3:]|capitalize }}</th><th scope="col">Total</th><th scope="col">WFH</th><th scope="col">Leave</th><th scope="col">In office</th></tr></thead>
-      <tbody>
-        {% for name, c in groups %}
-        <tr><th scope="row">{{ name }}</th><td>{{ c.total }}</td><td>{{ c.wfh }}</td><td>{{ c.leave }}</td><td><strong>{{ c.in_office }}</strong></td></tr>
-        {% endfor %}
-      </tbody>
-      <tfoot><tr><th scope="row">All</th><td>{{ summary.total }}</td><td>{{ summary.wfh }}</td><td>{{ summary.leave }}</td><td><strong>{{ summary.in_office }}</strong></td></tr></tfoot>
-    </table>
-    </div>
-  </section>
-  {% endfor %}
-</div>
+<section class="card">
+  <h2>By department</h2>
+  <div class="grid-scroll">
+  <table class="data-table">
+    <thead><tr><th scope="col">Department</th><th scope="col">Total</th><th scope="col">WFH</th><th scope="col">Leave</th><th scope="col">FC</th><th scope="col">BC</th></tr></thead>
+    <tbody>
+      {% for name, c in summary.by_department %}
+      <tr><th scope="row">{{ name }}</th><td>{{ c.total }}</td><td>{{ c.wfh }}</td><td>{{ c.leave }}</td><td><strong>{{ c.in_office }}</strong></td><td><strong>{{ c.bus }}</strong></td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><th scope="row">All</th><td>{{ summary.total }}</td><td>{{ summary.wfh }}</td><td>{{ summary.leave }}</td><td><strong>{{ summary.in_office }}</strong></td><td><strong>{{ summary.bus }}</strong></td></tr></tfoot>
+  </table>
+  </div>
+  <p class="legend"><span class="muted">FC = food count (expected in office). BC = bus count (bus pass holders in office).</span></p>
+</section>
 
 <section class="card">
-  <h2>Next {{ forecast|length }} days · expected in-office headcount</h2>
-  <div class="chart-box"><canvas id="forecast-chart" aria-label="Expected in-office headcount per day" role="img"></canvas></div>
+  <h2>Next {{ forecast|length }} days · food count &amp; bus count</h2>
+  <div class="chart-box"><canvas id="forecast-chart" aria-label="Food count and bus count per day" role="img"></canvas></div>
   <div class="grid-scroll">
     <table class="data-table">
-      <thead><tr><th scope="col">Date</th><th scope="col">Total</th><th scope="col">WFH</th><th scope="col">Leave</th><th scope="col">Food count</th></tr></thead>
+      <thead><tr><th scope="col">Date</th><th scope="col">Total</th><th scope="col">WFH</th><th scope="col">Leave</th><th scope="col">FC</th><th scope="col">BC</th></tr></thead>
       <tbody>
         {% for f in forecast %}
         <tr class="{{ 'is-weekend' if f.closed }}">
           <th scope="row"><a href="{{ url_for('admin.dashboard', date=f.date.isoformat()) }}">{{ f.date.strftime('%a %d %b') }}</a></th>
           {% if f.closed %}
-          <td colspan="4" class="muted">Weekend — office closed</td>
+          <td colspan="5" class="muted">Weekend — office closed</td>
           {% else %}
-          <td>{{ f.total }}</td><td>{{ f.wfh }}</td><td>{{ f.leave }}</td><td><strong>{{ f.in_office }}</strong></td>
+          <td>{{ f.total }}</td><td>{{ f.wfh }}</td><td>{{ f.leave }}</td><td><strong>{{ f.in_office }}</strong></td><td><strong>{{ f.bus }}</strong></td>
           {% endif %}
         </tr>
         {% endfor %}

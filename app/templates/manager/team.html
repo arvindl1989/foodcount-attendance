@@ -74,7 +74,12 @@
         <tr>
           <th scope="row" class="sticky-col">
             <span class="person-name">{{ row.person.name }}</span>
-            <span class="person-meta">{{ row.person.employee_id }}{% if row.person.location %} · {{ row.person.location }}{% endif %}</span>
+            <span class="person-meta">{{ row.person.employee_id }}{% if row.person.location %} · {{ row.person.location }}{% endif %}
+              <span class="person-tags">
+                <span class="tag tag-fc" title="Counted for food count when in office">FC</span>
+                {%- if row.person.bus_pass %}<span class="tag tag-bc" title="Has a bus pass: counted for bus count when in office">BC</span>{% endif -%}
+              </span>
+            </span>
           </th>
           {% for c in row.cells %}
           <td class="{{ 'is-weekend' if c.weekend }} {{ 'is-today' if c.today }} {{ 'cell-' ~ c.status|lower if c.status }}"
@@ -93,7 +98,9 @@
     <span><span class="dot dot-wfh"></span> WFH</span>
     <span><span class="dot dot-leave"></span> L = Leave</span>
     <span><span class="dot dot-office"></span> Blank = In office</span>
-    <span class="muted">Totals always cover the whole month.</span>
+    <span><span class="tag tag-fc">FC</span> Counted for food count</span>
+    <span><span class="tag tag-bc">BC</span> Has a bus pass: counted for bus count</span>
+    <span class="muted">FC and BC apply on days the person is in office. Totals always cover the whole month.</span>
   </p>
   {% else %}
   <p class="muted">You don't have any direct reports yet.</p>

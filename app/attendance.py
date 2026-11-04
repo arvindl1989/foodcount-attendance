@@ -125,7 +125,7 @@ def day_roster(day):
     roles = current_app.config["HEADCOUNT_ROLES"]
     placeholders = ",".join("?" * len(roles))
     return get_db().execute(
-        f"""SELECT u.id, u.employee_id, u.name, u.role, u.department, u.location,
+        f"""SELECT u.id, u.employee_id, u.name, u.role, u.department, u.location, u.bus_pass,
                    a.status
             FROM users u
             LEFT JOIN attendance_entries a ON a.user_id = u.id AND a.date = ?
@@ -136,37 +136,38 @@ def day_roster(day):
 
 
 def _blank_counts():
-    return {"total": 0, "wfh": 0, "leave": 0, "in_office": 0}
+    return {"total": 0, "wfh": 0, "leave": 0, "in_office": 0, "bus_pass": 0, "bus": 0}
 
 
-def _tally(counts, status, closed):
+def _tally(counts, row, closed):
     counts["total"] += 1
-    if status == "WFH":
+    counts["bus_pass"] += row["bus_pass"]
+    if row["status"] == "WFH":
         counts["wfh"] += 1
-    elif status == "LEAVE":
+    elif row["status"] == "LEAVE":
         counts["leave"] += 1
     elif not closed:
         counts["in_office"] += 1
+        counts["bus"] += row["bus_pass"]
 
 
 def headcount(day):
-    """Food count for one day, overall and broken down by location/department.
+    """Food count (FC) and bus count (BC) for one day, overall and by department.
 
-    in_office = total - WFH - leave. On weekends the office is closed, so
-    in_office is 0.
+    in_office (FC) = total - WFH - leave.
+    bus (BC) = bus pass holders who are in office.
+    On weekends the office is closed, so both are 0.
     """
     closed = is_weekend(day)
     overall = _blank_counts()
-    by_location, by_department = {}, {}
+    by_department = {}
     for row in day_roster(day):
-        _tally(overall, row["status"], closed)
-        _tally(by_location.setdefault(row["location"] or "—", _blank_counts()), row["status"], closed)
-        _tally(by_department.setdefault(row["department"] or "—", _blank_counts()), row["status"], closed)
+        _tally(overall, row, closed)
+        _tally(by_department.setdefault(row["department"] or "—", _blank_counts()), row, closed)
     return {
         "date": day,
         "closed": closed,
         **overall,
-        "by_location": sorted(by_location.items()),
         "by_department": sorted(by_department.items()),
     }
 
@@ -176,6 +177,6 @@ def forecast(start, days):
     result = []
     for i in range(days):
         hc = headcount(start + timedelta(days=i))
-        del hc["by_location"], hc["by_department"]
+        del hc["by_department"]
         result.append(hc)
     return result

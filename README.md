@@ -92,16 +92,17 @@ just edit that file, push, and Railway redeploys.
 ### Changing users: `data/roster.csv`
 
 ```
-employee_id,name,role,manager,department,location
-64120538,Anand Shanbag,manager,,Internal Controls,
-40103405,BALAJI K,employee,Anand Shanbag,Internal Controls,
+employee_id,name,role,manager,department,location,bus_pass
+64120538,Anand Shanbag,manager,,Internal Controls,,
+64127077,AZEEM MOHAMMAD,employee,Anand Shanbag,Internal Controls,,yes
 ```
 
 - `role` is `employee`, `manager` or `admin`.
 - `manager` is the manager's **name** exactly as written on their own row
   (case and extra spaces don't matter).
-- `department` and `location` drive the admin breakdowns; `location` is empty
-  for now.
+- `department` drives the admin breakdown. `location` is stored but not shown.
+- `bus_pass` is `yes` for people counted in the bus count (BC); leave it empty
+  otherwise. 10 team members were picked at random to start with.
 
 On every start (or `python seed.py`), the app makes the users match the file:
 new rows are added with `INITIAL_PASSWORD`, changed rows are updated (passwords
@@ -137,18 +138,23 @@ sent back to the home page).
   month navigation.
 - Filter: all, WFH only or leave only. The per-person WFH / leave totals always
   cover the whole month.
+- Each person is tagged **FC** (counted for food count) and, if they have a bus
+  pass, **BC** (counted for bus count). Both apply on days they're in office.
 
 ### Admin: food count
 
 ![Admin dashboard](docs/screenshots/admin.png)
 
-- Today's numbers by default: total employees, WFH, leave and
-  **expected in office = total − WFH − leave**.
+- Today's numbers by default: total employees, WFH, leave,
+  **food count (FC) = total − WFH − leave**, and
+  **bus count (BC) = bus pass holders who are in office**.
 - Date picker (plus previous / next day) to look at any date.
-- Breakdown by location and by department.
-- 7-day forward view as a table and bar chart. Weekends show as office closed.
-- **Export CSV** for the selected date: employee ID, name, department, location
-  and status (`WFH`, `LEAVE`, `IN_OFFICE`).
+- Breakdown by department, with FC and BC.
+- 7-day forward view of FC and BC as a table and bar chart. Weekends show as
+  office closed.
+- **Export CSV** for the selected date: employee ID, name, department, location,
+  status (`WFH`, `LEAVE`, `IN_OFFICE`), bus pass, and whether the person counts
+  towards FC and BC (1/0).
 
 ## Configuration
 
@@ -196,7 +202,7 @@ tests/test_app.py    pytest suite
 
 - **users**: `id`, `employee_id` (unique, the username), `name`,
   `password_hash` (werkzeug), `role` (employee / manager / admin),
-  `manager_id` → users, `department`, `location`
+  `manager_id` → users, `department`, `location`, `bus_pass` (0/1)
 - **attendance_entries**: `id`, `user_id`, `date`, `status` (WFH / LEAVE),
   `created_at`, `updated_at`, unique on `(user_id, date)`.
   No row means in office.

@@ -23,6 +23,7 @@ def dashboard():
     chart = {
         "labels": [f["date"].strftime("%a %d %b") for f in forecast],
         "in_office": [f["in_office"] for f in forecast],
+        "bus": [f["bus"] for f in forecast],
         "closed": [f["closed"] for f in forecast],
     }
     return render_template(
@@ -44,11 +45,15 @@ def export_csv():
     closed = att.is_weekend(day)
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["date", "employee_id", "name", "department", "location", "status"])
+    writer.writerow(["date", "employee_id", "name", "department", "location", "status",
+                     "bus_pass", "food_count", "bus_count"])
     for row in att.day_roster(day):
         status = row["status"] or ("OFFICE_CLOSED" if closed else "IN_OFFICE")
+        in_office = status == "IN_OFFICE"
         writer.writerow([day.isoformat(), row["employee_id"], row["name"],
-                         row["department"], row["location"], status])
+                         row["department"], row["location"], status,
+                         "yes" if row["bus_pass"] else "no",
+                         int(in_office), int(in_office and bool(row["bus_pass"]))])
     return Response(
         out.getvalue(),
         mimetype="text/csv",

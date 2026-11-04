@@ -166,7 +166,9 @@ def test_admin_headcount_matches_formula(client, app):
         hc = attendance.headcount(date(2026, 10, 27))
         assert hc["total"] == TOTAL
         assert hc["in_office"] == hc["total"] - hc["wfh"] - hc["leave"]
-        assert sum(c["in_office"] for _, c in hc["by_location"]) == hc["in_office"]
+        assert sum(c["in_office"] for _, c in hc["by_department"]) == hc["in_office"]
+        assert hc["bus_pass"] == 10
+        assert sum(c["bus"] for _, c in hc["by_department"]) == hc["bus"]
         assert attendance.headcount(date(2026, 10, 31))["in_office"] == 0  # weekend
     html = client.get("/admin/?date=2026-10-27").get_data(as_text=True)
     assert f'<span class="stat-value">{hc["in_office"]}</span>' in html
@@ -178,9 +180,13 @@ def test_admin_csv_export(client):
     res = client.get("/admin/export.csv?date=2026-10-27")
     assert res.mimetype == "text/csv"
     lines = res.get_data(as_text=True).strip().splitlines()
-    assert lines[0] == "date,employee_id,name,department,location,status"
+    assert lines[0] == "date,employee_id,name,department,location,status,bus_pass,food_count,bus_count"
     assert len(lines) == TOTAL + 1
-    assert all(line.rsplit(",", 1)[1] in ("WFH", "LEAVE", "IN_OFFICE") for line in lines[1:])
+    rows = [line.split(",") for line in lines[1:]]
+    assert all(r[5] in ("WFH", "LEAVE", "IN_OFFICE") for r in rows)
+    assert sum(r[6] == "yes" for r in rows) == 10
+    for r in rows:  # BC only for pass holders who are in office
+        assert r[8] == str(int(r[5] == "IN_OFFICE" and r[6] == "yes"))
 
 
 def test_login_explains_empty_database(tmp_path):
@@ -236,3 +242,39 @@ def test_ritu_manages_the_admin(client):
     login(client, "manager", "11223344", PW)
     html = client.get("/manager/").get_data(as_text=True)
     assert "SATHISH KUMAR M" in html and "1 direct report" in html
+
+
+def test_bus_count_is_pass_holders_in_office(app):
+    with app.app_context():
+        db = get_db()
+        holders = [r["id"] for r in db.execute("SELECT id FROM users WHERE bus_pass = 1 ORDER BY id")]
+        day = date(2026, 10, 28)
+        db.execute("DELETE FROM attendance_entries WHERE date = ?", (day.isoformat(),))
+        attendance.set_status(holders[0], day, "WFH")
+        attendance.set_status(holders[1], day, "LEAVE")
+        hc = attendance.headcount(day)
+        assert hc["in_office"] == TOTAL - 2
+        assert hc["bus"] == len(holders) - 2
+        assert attendance.headcount(date(2026, 10, 31))["bus"] == 0  # weekend
+
+
+def test_manager_grid_shows_fc_and_bc_tags(client):
+    login(client, "manager", "40104978", PW)  # Rajesh P: STP, 7 bus pass holders
+    html = client.get("/manager/").get_data(as_text=True)
+    assert html.count('class="tag tag-fc"') == 12 + 1   # every report + legend
+    assert html.count('class="tag tag-bc"') == 7 + 1
+
+
+def test_old_database_gets_bus_pass_column(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute("""CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL,
+                    manager_id INTEGER, department TEXT, location TEXT)""")
+    conn.execute("INSERT INTO users (employee_id, name, password_hash, role) VALUES ('1', 'A', 'x', 'employee')")
+    conn.commit()
+    conn.close()
+    create_app(DATABASE=str(path), SECRET_KEY="test")
+    conn = sqlite3.connect(path)
+    assert conn.execute("SELECT bus_pass FROM users").fetchall() == [(0,)]

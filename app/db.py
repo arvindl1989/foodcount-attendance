@@ -25,9 +25,20 @@ def close_db(_exc=None):
         conn.close()
 
 
+# Columns added after the first release: (table, column, definition).
+# Existing databases get them via ALTER TABLE; new ones from schema.sql.
+MIGRATIONS = [
+    ("users", "bus_pass", "INTEGER NOT NULL DEFAULT 0"),
+]
+
+
 def init_db(conn):
     schema = resources.files(__package__).joinpath("schema.sql").read_text()
     conn.executescript(schema)
+    for table, column, definition in MIGRATIONS:
+        columns = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
     conn.commit()
 
 

@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS users (
     role          TEXT    NOT NULL CHECK (role IN ('employee', 'manager', 'admin')),
     manager_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
     department    TEXT,
-    location      TEXT
+    location      TEXT,
+    bus_pass      INTEGER NOT NULL DEFAULT 0        -- 1 = counted for bus count
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_manager ON users(manager_id);

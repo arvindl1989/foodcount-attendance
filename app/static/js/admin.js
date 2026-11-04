@@ -1,4 +1,4 @@
-// Admin dashboard: bar chart of expected in-office headcount for the next few days.
+// Admin dashboard: bar chart of food count and bus count for the next few days.
 (function () {
   "use strict";
 
@@ -11,30 +11,37 @@
   }
 
   var data = JSON.parse(dataEl.textContent);
-  var accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#0f766e";
-  var muted = "#cbd5e1";
+  var css = getComputedStyle(document.documentElement);
+  var accent = css.getPropertyValue("--accent").trim() || "#0f766e";
+  var bus = css.getPropertyValue("--bus").trim() || "#7c3aed";
 
   new Chart(canvas, {
     type: "bar",
     data: {
       labels: data.labels,
       datasets: [{
-        label: "Expected in office",
+        label: "Food count (FC)",
         data: data.in_office,
-        backgroundColor: data.closed.map(function (c) { return c ? muted : accent; }),
+        backgroundColor: accent,
         borderRadius: 4,
-        maxBarThickness: 48
+        maxBarThickness: 40
+      }, {
+        label: "Bus count (BC)",
+        data: data.bus,
+        backgroundColor: bus,
+        borderRadius: 4,
+        maxBarThickness: 40
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
+        legend: { position: "bottom" },
         tooltip: {
           callbacks: {
             label: function (ctx) {
-              return data.closed[ctx.dataIndex] ? "Weekend — office closed" : ctx.parsed.y + " expected in office";
+              return data.closed[ctx.dataIndex] ? "Weekend — office closed" : ctx.dataset.label + ": " + ctx.parsed.y;
             }
           }
         }
